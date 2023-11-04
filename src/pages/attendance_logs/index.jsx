@@ -72,6 +72,7 @@ export default function Logs(props) {
             (item.venueName === venueSelected && item.date.toString().includes(searchText))
           );
         });
+        console.log(filtered)
         setFilteredEvents(filtered);
       }
     };
