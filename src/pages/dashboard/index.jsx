@@ -1,10 +1,10 @@
 import DashBoardTemplate from "../containers/dashboard_template";
+import { BASE_URL } from "../../links";
 
 import {
   Box,
   Grid,
   TableContainer,
-  TableCell,
   TableHead,
   TableRow,
   Typography,
@@ -15,17 +15,10 @@ import {
 import { useState, useEffect } from "react";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
-import dayjs from "dayjs";
-import { DemoContainer, DemoItem } from "@mui/x-date-pickers/internals/demo";
-import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
-import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
-import { DateRangePicker } from "@mui/x-date-pickers-pro/DateRangePicker";
 import axios from "axios";
 import * as React from "react";
 
-import {
-  StyledTableCell, StyledTableRow,
-} from "./styles";
+import { StyledTableCell, StyledTableRow } from "./styles";
 
 //temp deets
 // const containerDetails = [
@@ -67,7 +60,7 @@ import {
 //   },
 // ];
 // const colors = ["#FFFF8F","#82eedd","#87CEEB","#98FB98","#FFD700","#FFA500",];
-const colors = ["#fecc00",];
+const colors = ["#fecc00", "white"];
 // for Reviews
 const reviews = [
   { label: "Name", value: "John Doe" },
@@ -83,90 +76,63 @@ const reviews = [
 export default function Tracker(props) {
   //const [ratingFilter, setRatingFilter] = useState([0, 5]);
   const [data, setData] = useState([]);
-  const [value, setValue] = React.useState([
-    dayjs("2022-04-17"),
-    dayjs("2022-04-21"),
-  ]);
 
-  const [containerDetails, setContainerDetails] = useState([
-    {
-      title: "ONGOING",
-      contents: [
-        { name: "Conference A", length: 0 },
-        { name: "Conference B", length: 0 },
-        { name: "Co-Working Space", length: 0 },
-      ],
-    },
-    {
-      title: "EXPECTED",
-      contents: [
-        { name: "Conference A", length: 0 },
-        { name: "Conference B", length: 0 },
-        { name: "Co-Working Space", length: 0 },
-      ],
-    },
-    {
-      title: "WAITING",
-      contents: [
-        { name: "Conference A", length: 0 },
-        { name: "Conference B", length: 0 },
-        { name: "Co-Working Space", length: 0 },
-      ],
-    },
-    {
-      title: "OVERSTAYING",
-      contents: [
-        { name: "Conference A", length: 0 },
-        { name: "Conference B", length: 0 },
-        { name: "Co-Working Space", length: 0 },
-      ],
-    },
-  ]);
-  useEffect(() => {
-    const fetchData = async () => {
-      const endpoints = [
-        "http://127.0.0.1:8000/api/getOngoing/",
-        "http://127.0.0.1:8000/api/getExpected/",
-        "http://127.0.0.1:8000/api/getWaiting/",
-        "http://127.0.0.1:8000/api/getOverstaying/",
-      ];
+const title = ["ONGOING", "EXPECTED", "WAITING", "OVERSTAYING"];
 
-      const updatedContainerDetails = [...containerDetails];
+const [containerDetails, setContainerDetails] = useState(
+  title.map((title) => ({
+    title,
+    contents: [
+      // { name: "Conference A", count: 0 },
+      // { name: "Conference B", count: 0 },
+      // { name: "Co-Working Space", count: 0 },
+    ],
+  }))
+);
 
-      try {
-        for (let i = 0; i < endpoints.length; i++) {
-          const response = await axios.get(endpoints[i]);
-          if (response.status === 200) {
-            const data = response.data;
-            // Check if data contains the expected keys
-            if (
-              "conferenceRoomA" in data &&
-              "conferenceRoomB" in data &&
-              "coworkingSpace" in data
-            ) {
-              updatedContainerDetails[i].contents[0].length =data.conferenceRoomA;
-              updatedContainerDetails[i].contents[1].length =data.conferenceRoomB;
-              updatedContainerDetails[i].contents[2].length =data.coworkingSpace;
-            } else {
-              console.error(`Invalid data format for ${endpoints[i]}`);
-            }
+useEffect(() => {
+  const fetchData = async () => {
+    const endpoints = [
+      `${BASE_URL}/api/getOngoing/`,
+      `${BASE_URL}/api/getExpected/`,
+      `${BASE_URL}/api/getWaiting/`,
+      `${BASE_URL}/api/getOverstaying/`,
+    ];
+
+    const updatedContainerDetails = [...containerDetails];
+
+    try {
+      for (let i = 0; i < endpoints.length; i++) {
+        const response = await axios.get(endpoints[i]);
+        if (response.status === 200) {
+          const data = response.data;
+
+          if (Array.isArray(data)) {
+
+            updatedContainerDetails[i].contents = data.map((facility) => ({
+              name: facility.facility_name,
+              count: facility.count,
+            }));
           } else {
-            console.error(`Failed to fetch data from ${endpoints[i]}`);
+            console.error(`Invalid data format for ${endpoints[i]}`);
           }
+        } else {
+          console.error(`Failed to fetch data from ${endpoints[i]}`);
         }
-
-        setContainerDetails(updatedContainerDetails);
-      } catch (error) {
-        console.error("Error fetching data:", error);
       }
-    };
 
-    fetchData();
-  }, []);
+      setContainerDetails(updatedContainerDetails);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+    }
+  };
 
+  fetchData();
+}, []);
+  
   useEffect(() => {
     axios
-      .get("http://127.0.0.1:8000/api/getSignedIn/")
+      .get(`${BASE_URL}/api/getSignedIn/`)
       .then((response) => {
         setData(response.data);
       })
@@ -183,43 +149,54 @@ export default function Tracker(props) {
           flexDirection: "column",
           alignItems: "start",
         }}
-      >
-        <Typography
-          sx={{
-            paddingLeft: 2,
-            color: "lightblack",
-            fontSize: 30,
-            fontWeight: "bold",
-            paddingLeft: 10,
-            marginTop: 4,
-          }}
-          fontFamily="Poppins"
-        >
-          Activity Tracker
-        </Typography>
-      </div>
-
+      ></div>
+      <div>
       <Container
         sx={{
-          minWidth: 100,
           display: "flex",
-          justifyContent: "center",
-          marginBottom: 2,
+          flexDirection: "column",
+          alignItems: "center",
         }}
       >
         <Box sx={{ flexGrow: 1 }}>
           <Grid container spacing={2}>
+            
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "start",
+              }}
+            >
+              <Typography
+                sx={{
+                  paddingLeft: -200,
+                  color: "lightblack",
+                  fontSize: 30,
+                  fontWeight: "bold",
+                  paddingRight: 100,
+                  paddingTop: 5,
+                  marginTop: 5,
+                }}
+                fontFamily="Poppins"
+              >
+                Activity Tracker
+              </Typography>
+            </div>
             {containerDetails.map((card, index) => (
               <Grid key={index} item xs={4} md={3}>
-              <Paper
-                elevation={3}
-                sx={{
-                  width: 243,
-                  height: 260,
-                  backgroundColor: colors[index % colors.length],
-                  marginBottom: 7, 
-                }}
-              >
+                <Paper
+                  elevation={3}
+                  sx={{
+                    width: 243,
+                    height: 'auto',
+                    display: "relative",
+                    background: `linear-gradient(to bottom, ${colors.join(
+                      ", "
+                    )})`,
+                    marginBottom: 7,
+                  }}
+                >
                   <CardContent>
                     <Typography
                       sx={{
@@ -245,7 +222,7 @@ export default function Tracker(props) {
                         >
                           <div style={{ flex: 1 }}>{content.name}</div>
                           <div style={{ width: "25px", marginLeft: "8px" }}>
-                            [{content.length}]
+                            [{content.count}]
                           </div>
                           <br />
                           <br />
@@ -270,11 +247,10 @@ export default function Tracker(props) {
       >
         <Typography
           sx={{
-            paddingLeft: 2,
+            paddingLeft: 15,
             color: "lightblack",
             fontSize: 30,
             fontWeight: "bold",
-            paddingLeft: 10,
           }}
           fontFamily="Poppins"
         >
@@ -310,16 +286,23 @@ export default function Tracker(props) {
             <TableBody>
               {data.map((row, index) => (
                 <StyledTableRow key={index}>
-                  <StyledTableCell align="center">{row.booking}</StyledTableCell>
+                  <StyledTableCell align="center">
+                    {row.booking}
+                  </StyledTableCell>
                   <StyledTableCell align="center">{row.name}</StyledTableCell>
-                  <StyledTableCell align="center">{row.venueName}</StyledTableCell>
-                  <StyledTableCell align="center">{row.signInTime}</StyledTableCell>
+                  <StyledTableCell align="center">
+                    {row.venueName}
+                  </StyledTableCell>
+                  <StyledTableCell align="center">
+                    {row.signInTime}
+                  </StyledTableCell>
                 </StyledTableRow>
               ))}
             </TableBody>
           </Table>
         </TableContainer>
       </Container>
+      </div>
 
       {/* CUSTOMER SATISFACTION & REVIEWS
       <Container
