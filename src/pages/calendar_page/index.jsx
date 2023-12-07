@@ -1,6 +1,7 @@
 import * as React from "react";
 import DashBoardTemplate from "../containers/dashboard_template";
 import { BASE_URL } from "../../links";
+import FilledAlerts from "../../alerts";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -23,13 +24,17 @@ import {
   Typography,
   Autocomplete,
 } from "@mui/material";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Modal from "@mui/material/Modal";
 import CloseIcon from "@mui/icons-material/Close";
 // import MenuItem from "@mui/material/MenuItem";
 // import Select from "@mui/material/Select";
 import moment from "moment/moment";
 import ClearIcon from "@mui/icons-material/Clear";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
 import {
   ButtonStyle1,
   selectedStyle,
@@ -63,6 +68,50 @@ after_2_weeks.setDate(today.getDate() + maxWeeks * 7);
 //   },
 // ];
 
+export function CustomAlert({ open, onClose, title, message, success }){
+  const defaultBackgroundColor = success ? "#5bb450" : "#e74c3c";
+  console.log(success);
+  const defaultTextColor = "white";
+
+  const dialogStyle = {
+    "& .MuiPaper-root": {
+      backgroundColor: defaultBackgroundColor,
+      maxWidth: "900px",
+      width: "480px",
+      color: defaultTextColor,
+      position: "absolute",
+      top: "0",
+      left: "50%",
+      transform: "translate(-50%, 0)",
+      borderRadius: "10px",
+      height: "100px",
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "center",
+    },
+    "& .MuiButton-root": {
+      color: defaultTextColor,
+    },
+  };
+
+  useEffect(() => {
+    if (open) {
+      const timer = setTimeout(() => {
+        onClose();
+      }, 2000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [open, onClose]);
+
+  return (
+    <Dialog open={open} onClose={onClose} sx={dialogStyle}>
+      <DialogTitle closeButton>{title}</DialogTitle>
+      <DialogContent sx={{ justifyContent: "center" }}>{message}</DialogContent>
+      <DialogActions></DialogActions>
+    </Dialog>
+  );
+};
 
 export default function Calendar(props) {
   let { user, setUser, authenticated } = useContext(AuthContext);
@@ -73,16 +122,22 @@ export default function Calendar(props) {
   const [tempId, setTempId] = useState(0);
   const [role, setRole] = useState("admin"); //default role
   const [info, setInfo] = useState({});
+  const [alertSuccess, setAlertSuccess] = useState(true);
+
 
   const submitBooking = () => {
     // setAttendeeList(attendeeList=>[
     //   ...attendeeList,
     //   { user_id: 1, name: "wind"}
     // ]);
-    if(booking.current.officeName===""||booking.current.officeName===" "||booking.current.officeName===null){
-      booking.current.officeName="none"
+    if (
+      booking.current.officeName === "" ||
+      booking.current.officeName === " " ||
+      booking.current.officeName === null
+    ) {
+      booking.current.officeName = "none";
     }
-    console.log(booking.current);
+
     axios
       .post(`${BASE_URL}/api/createBooking/`, {
         officeName: booking.current.officeName,
@@ -96,7 +151,7 @@ export default function Calendar(props) {
         coins: booking.current.coins,
         points: booking.current.points,
         user: user.user_id,
-        
+
         user_id: user.user_id,
         attendees: [
           ...attendeeList,
@@ -104,13 +159,18 @@ export default function Calendar(props) {
         ],
       })
       .then((res) => {
-        if(res.data.error){
-          alert(res.data.error)
-        }else {
-        setBookingsRefresher(!bookingsRefresher);
-        alert("booking created");
-        setAttendeeList([]);
-      }});
+        if (res.data.error) {
+          setAlertMessage(res.data.error);
+          setAlertOpen(true);
+          setAlertSuccess(false);
+        } else {
+          setBookingsRefresher(!bookingsRefresher);
+          setAlertMessage("Booking created successfully!");
+          setAlertOpen(true);
+          setAlertSuccess(true);
+          setAttendeeList([]);
+        }
+      });
   };
   //data to send
   //new booking
@@ -133,10 +193,20 @@ export default function Calendar(props) {
       setBookingAttendees(res.data);
     });
 
-    const res = eventData.find((item) => {
+    var res = eventData.find((item) => {
       return item?.id === parseInt(id);
     });
-    console.log("user called ID:", res.user_id);
+
+    var cancelCost = 0;
+
+    if (res.points === 0 && res.coins > 0) {
+      cancelCost = res.coins * 0.3;
+    } else if (res.coins === 0 && res.points > 0) {
+      cancelCost = res.points * 0.3;
+    }
+    console.log(cancelCost);
+    res = { ...res, cancelCost: cancelCost };
+    // console.log("user called ID:", res.user_id);
     setInfo(res);
     setOpenInfoModal(true);
   };
@@ -148,16 +218,15 @@ export default function Calendar(props) {
       axios.get(`${BASE_URL}/facility/get-facility/`).then((res) => {
         setFacilities(res?.data);
         // stroe lng nakog variable ang index 0 pra di sigeg access
-        var indx0=res?.data[0]
+        var indx0 = res?.data[0];
         setVenueSelected(indx0.facility.facility_name);
         setVenueId(indx0?.facility?.facility_id);
         setAttendeLimit(indx0?.main_rules?.num_attendies);
         setMaxComputers(indx0?.main_rules?.num_pc);
       });
     });
-    console.log(facilities)
   }, []);
-  
+
   //display bookings
   const [events, setEvents] = useState([]);
   React.useEffect(() => {
@@ -173,40 +242,38 @@ export default function Calendar(props) {
       //     };
       //   })
       // );
-      
-      var bookings=  res?.data.map((item) => {
-          return {
-            id: item?.id,
-            title: item?.description,
-            start: item?.date + "T" + item?.startTime,
-            end: item?.date + "T" + item?.endTime,
-            venue: item?.venue,
-            type:"booking"
-          };
-        })
-      
+
+      var bookings = res?.data.map((item) => {
+        return {
+          id: item?.id,
+          title: item?.description,
+          start: item?.date + "T" + item?.startTime,
+          end: item?.date + "T" + item?.endTime,
+          venue: item?.venue,
+          type: "booking",
+        };
+      });
+
       axios.get(`${BASE_URL}/api/getEvents/`).then((res) => {
-        // console.log(res.data)
         var calendarEvents;
-        calendarEvents=res?.data.map((item) => {
-          var dateSplit=item?.date.split("T")
+        calendarEvents = res?.data.map((item) => {
+          var dateSplit = item?.date.split("T");
           return {
             id: item?.id,
             title: item?.event_name,
             start: dateSplit[0] + "T" + item?.start,
-            end: dateSplit[0]  + "T" + item?.end,
+            end: dateSplit[0] + "T" + item?.end,
             venue: item?.facility,
-            type:"rule",
-            backgroundColor:"black",
-            textColor:"white"
+            type: "rule",
+            backgroundColor: "black",
+            textColor: "white",
           };
-        })
-        bookings=bookings.concat(calendarEvents)
-        console.log(bookings)
-        setEvents(bookings)
+        });
+        bookings = bookings.concat(calendarEvents);
+
+        setEvents(bookings);
       });
       setEventData(res.data);
-      
     });
   }, [bookingsRefresher]);
   // cancelled bookings
@@ -216,7 +283,9 @@ export default function Calendar(props) {
       .then(() => {
         setBookingsRefresher(!bookingsRefresher); // Refresh the list of bookings
         setCancelModal(false);
-        alert("Booking cancelled successfully");
+        setAlertMessage("Booking cancelled successfully");
+        setAlertOpen(true);
+        setAlertSuccess(true);
       })
       .catch((error) => {
         console.error("Error cancelling booking:", error);
@@ -231,7 +300,6 @@ export default function Calendar(props) {
       startTime: booking.current.startTime,
       endTime: booking.current.endTime,
       numOfStudents: attendeeList.length + 1,
-      // Add any other necessary data here
     };
 
     axios
@@ -251,7 +319,7 @@ export default function Calendar(props) {
   const [refresh, setRefresh] = useState(true);
   const [attendeeList, setAttendeeList] = useState([]);
   const [fakeUserDb, setFakeUserDb] = useState([]);
-  const [facilities,setFacilities]=useState([])
+  const [facilities, setFacilities] = useState([]);
   const handleChange = (e) => {
     var tempBooking = booking.current;
     if (e.target.name === "computers") {
@@ -285,11 +353,24 @@ export default function Calendar(props) {
   const [attendeeName, setAttendeeName] = useState("");
   const [venueSelected, setVenueSelected] = useState("Coworking Space");
   const [venueId, setVenueId] = useState(1);
-  const[attendLimit,setAttendeLimit]=useState(0);
-  const [maxComputers,setMaxComputers]=useState(0);
+  const [attendLimit, setAttendeLimit] = useState(0);
+  const [maxComputers, setMaxComputers] = useState(0);
   const [error, setError] = useState(false);
   const found = (element) => element.name === attendeeName;
   const navigate = useNavigate();
+  const [alertOpen, setAlertOpen] = useState(false);
+  const [alertMessage, setAlertMessage] = useState("");
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [alertInfo, setAlertInfo] = useState({
+    visible: false,
+    variant: "info",
+    message: "",
+  });
+
+  const handleAlertClose = () => {
+    setAlertOpen(false);
+  };
+
   const deleteUser = (index) => {
     setAttendeeList([
       ...attendeeList.slice(0, index),
@@ -298,10 +379,10 @@ export default function Calendar(props) {
   };
   //to handle security
   if (user === null) {
-    navigate("/api/login");
+    navigate("/booking/login");
   } else {
     return (
-      <div>
+      <div style={{ position: "relative" }}>
         <DashBoardTemplate title="Calendar">
           <div
             style={{
@@ -342,20 +423,20 @@ export default function Calendar(props) {
                           : unselectedStyle
                       }
                       onClick={() => {
-                        booking.current = {...booking.current,computers:0};
+                        booking.current = { ...booking.current, computers: 0 };
                         setVenueSelected(item?.facility?.facility_name);
-                        setVenueId(item?.facility?.facility_id);  
-                        setAttendeLimit(item?.main_rules?.num_attendies)
+                        setVenueId(item?.facility?.facility_id);
+                        setAttendeLimit(item?.main_rules?.num_attendies);
                         // setMaxComputers(item?.main_rules?.num_pc)
                         // alert(item?.main_rules?.status)
-                        if(item?.main_rules.status === true){
-                        setMaxComputers(item?.main_rules?.num_pc)
-                      } else if(item.main_rules.status === false){
-                        setMaxComputers(0)
-                      }
-                    }}
+                        if (item?.main_rules.status === true) {
+                          setMaxComputers(item?.main_rules?.num_pc);
+                        } else if (item.main_rules.status === false) {
+                          setMaxComputers(0);
+                        }
+                      }}
                     >
-                     {item?.facility?.facility_name}
+                      {item?.facility?.facility_name}
                     </Button>
                   ))}
                   {/* <Button
@@ -367,7 +448,7 @@ export default function Calendar(props) {
                     onClick={() => {
                       setVenueSelected("Coworking Space");
                       setVenueId(1);
-                      
+
                     }}
                   >
                     Co-working Space
@@ -414,7 +495,9 @@ export default function Calendar(props) {
 
                   // Check if the selected start time is in the past
                   if (selectedStartTime <= currentDate) {
-                    alert("Please select a future time");
+                    setAlertMessage("Please select a future time");
+                    setAlertOpen(true);
+                    setAlertSuccess(false);
                   } else {
                     var dateSplitted = info.startStr.split("T");
                     var startDate = dateSplitted[0];
@@ -439,25 +522,32 @@ export default function Calendar(props) {
                       .then((response) => {
                         totalDuration = response.data.duration;
                         var limit = 3 - totalDuration;
-                        console.log("limit " + limit);
-                        console.log(hoursDuration);
+
                         if (user?.role === "user") {
                           if (hoursDuration > limit || limit < 0) {
-                            alert(
-                              "you have exceeded the limit of 3 hours booking per week"
+                            setAlertMessage(
+                              "You have exceeded the limit of 3 hours booking per week"
                             );
+                            setAlertOpen(true);
+                            setAlertSuccess(false);
+                            // alert("You have exceeded the limit of 3 hours booking per week")
+                            setTimeout(() => {
+                              setAlertInfo((prevAlertInfo) => ({
+                                ...prevAlertInfo,
+                                visible: false,
+                              }));
+                            }, 3000);
                             return null;
                           }
                         }
 
-                        console.log(hoursDuration);
                         var tempBooking = booking.current;
                         tempBooking.startTime = startTime;
                         tempBooking.endTime = endTime;
                         tempBooking.date = startDate;
                         tempBooking.venue = venueSelected;
                         booking.current = tempBooking;
-                        console.log(booking.current);
+                        // console.log(booking.current);
                         setOpenModal1(true);
                       })
                       .catch((error) => {
@@ -468,15 +558,17 @@ export default function Calendar(props) {
                 }}
                 //function para ig click ug usa ka event
                 eventClick={(e) => {
-                  console.log(e);
-                  if(e.event._def.extendedProps.type==="rule"){
-                    alert("Can't Book on this Date, important Event is Scheduled")
-
-                }else if(e.event._def.extendedProps.type==="booking"){
-                  handleView(e.event.id);
-                }
-              }}
-                
+                  setSelectedEvent(e.event);
+                  // console.log(e);
+                  if (e.event._def.extendedProps.type === "rule") {
+                    setAlertMessage(
+                      "Booking not available at this time due to a scheduled important event."
+                    );
+                    setAlertOpen(true);
+                  } else if (e.event._def.extendedProps.type === "booking") {
+                    handleView(e.event.id);
+                  }
+                }}
                 unselect={(jsEvent, view) => {}}
                 // dayClick={(date, jsEvent, view) => {}}
                 selectOverlap={(event) => {}}
@@ -520,8 +612,12 @@ export default function Calendar(props) {
                 contentHeight="auto"
                 weekends={false}
               ></FullCalendar>
+              <CustomAlert
+                open={alertOpen}
+                onClose={handleAlertClose}
+                message={alertMessage}
+              />
             </Box>
-
             <Typography></Typography>
           </Box>
         </DashBoardTemplate>
@@ -565,7 +661,7 @@ export default function Calendar(props) {
             </Box>
 
             <Box p="30px 30px 0px 30px">
-              {maxComputers!=0 ? (
+              {maxComputers !== 0 ? (
                 <Box sx={{ display: "flex", justifyContent: "center" }}>
                   <TextField
                     name="computers"
@@ -638,15 +734,24 @@ export default function Calendar(props) {
                   )}
                 />
                 <Button
-                
                   onClick={(e) => {
-                    console.log(attendLimit)
-                    if(attendeeList.length>=attendLimit){
-                      alert("Limit Exceeded for This Venue")
+                    // console.log(attendLimit);
+                    if (attendeeList.length >= attendLimit) {
+                      // alert("Limit Exceeded for This Venue");
+                      setAlertInfo({
+                        visible: true,
+                        variant: "info",
+                        message: "Limit Exceeded for This Venue.",
+                      });
                       return;
                     }
                     if (attendeeName === "") {
-                      alert("Please Enter Attendee name");
+                      //alert("Please Enter Attendee name");
+                      setAlertInfo({
+                        visible: true,
+                        variant: "info",
+                        message: "Please Enter Attendee name.",
+                      });
                       return;
                     }
                     if (
@@ -665,9 +770,15 @@ export default function Calendar(props) {
                       if (userFound !== undefined) {
                         isExisting = true;
                         id = userFound?.id;
-                      } else {alert("User not found")
+                      } else {
+                        // alert("User not found");
+                        setAlertInfo({
+                          visible: true,
+                          variant: "info",
+                          message: "User not found",
+                        });
                         return;
-                    }
+                      }
                       const newUser = {
                         name: attendeeName,
                         existing: isExisting,
@@ -750,6 +861,11 @@ export default function Calendar(props) {
             >
               <Button
                 onClick={() => {
+                  setAlertInfo({
+                    visible: false,
+                    variant: "info",
+                    message: "",
+                  });
                   setOpenModal1(true);
                   setOpenModal2(false);
                 }}
@@ -758,23 +874,35 @@ export default function Calendar(props) {
                 Back
               </Button>
               <ButtonGroup>
-                <Button
-                  sx={ButtonStyle1}
-                  onClick={() => {
-                    if (booking.current.computers > attendeeList.length + 1) {
-                      alert(
-                        "You can't borrow computers more than the number of attendees"
-                      );
-                    } else {
-                      console.log(attendeeList.length);
-                      calculateCost();
-                      setOpenModal3(true);
-                      setOpenModal2(false);
-                    }
-                  }}
-                >
-                  Proceed
-                </Button>
+                <div>
+                  <Button
+                    sx={ButtonStyle1}
+                    onClick={() => {
+                      if (booking.current.computers > attendeeList.length + 1) {
+                        // Set the visibility state and message for the "info" alert
+                        setAlertInfo({
+                          visible: true,
+                          variant: "info",
+                          message:
+                            "You can't borrow computers more than the number of attendees",
+                        });
+                      } else {
+                        // console.log(attendeeList.length);
+                        calculateCost();
+                        setOpenModal3(true);
+                        setOpenModal2(false);
+                      }
+                    }}
+                  >
+                    Proceed
+                  </Button>
+                  {alertInfo.visible && (
+                    <FilledAlerts
+                      variant={alertInfo.variant}
+                      message={alertInfo.message}
+                    />
+                  )}
+                </div>
               </ButtonGroup>
             </Box>
           </Box>
@@ -1005,6 +1133,10 @@ export default function Calendar(props) {
             >
               <Button
                 onClick={() => {
+                  setAlertInfo({
+                    visible: false,
+                    message: "",
+                  });
                   setOpenModal3(false);
                   setOpenModal2(true);
                 }}
@@ -1247,9 +1379,21 @@ export default function Calendar(props) {
                   sx={ButtonStyle1}
                   variant="contained"
                   onClick={() => {
-                    setCancelModal(true);
-                    setOpenInfoModal(false);
+                    const isEventToday = selectedEvent && new Date(selectedEvent.start).toDateString() === new Date().toDateString();
+
+                    if (isEventToday) {
+                      // if event is today
+                      console.log("Cannot cancel booking for events happening today");
+                    } else {
+                      // if event is not today
+                      console.log(info.cancelCost);
+                      setCancelModal(true);
+                      setOpenInfoModal(false);
+                    }
                   }}
+                  // disable button
+                  disabled={selectedEvent && new Date(selectedEvent.start).toDateString() === new Date().toDateString()
+                  }
                 >
                   Cancel Booking
                 </Button>
@@ -1286,7 +1430,12 @@ export default function Calendar(props) {
           aria-describedby="modal-modal-description"
           style={{ width: "100%", overflow: "auto" }}
         >
-          <Box sx={modalStyle}>
+          <Box
+            sx={{
+              ...modalStyle,
+              width: { lg: 500, xs: 350, sm: 500, md: 500, xl: 500 },
+            }}
+          >
             <Box sx={modalHeaderStyle}>
               <Typography
                 sx={{ fontWeight: "bold" }}
@@ -1296,32 +1445,57 @@ export default function Calendar(props) {
                 fontFamily="Poppins"
                 color="white"
               >
-                Are you sure you want to cancel?
+                Cancel Booking
               </Typography>
             </Box>
             <Box p={4}>
               {user?.role === "user" ? (
                 <Box>
                   <Box
-                    sx={{ display: "flex", justifyContent: "space-between" }}
+                    sx={{ display: "column", justifyContent: "space-between" }}
                   >
                     <Typography
                       fontWeight="bold"
-                      marginBottom="5px"
+                      marginBottom="10px"
                       fontFamily="Poppins"
+                      fontSize="25px"
                     >
-                      Cost of Cancellation: 10
+                      Are you sure you want to cancel?
+                    </Typography>
+
+                    <Typography
+                      marginBottom="15px"
+                      fontFamily="Poppins"
+                      textAlign="center"
+                    >
+                      Cost of Cancellation: {info.cancelCost}
                     </Typography>
                   </Box>
                   <Box
                     sx={{ display: "flex", justifyContent: "space-between" }}
                   >
-                    <Button variant="contained">Pay</Button>
                     <Button
+                      sx={{
+                        ...ButtonStyle1,
+                        paddingRight: "30px",
+                        paddingLeft: "30px",
+                      }}
+                      variant="contained"
+                      onClick={() => cancelBooking(tempId)}
+                    >
+                      Pay{" "}
+                    </Button>
+                    {/* <Button variant="contained">Pay</Button> */}
+                    <Button
+                      sx={{
+                        ...ButtonStyle1,
+                        paddingRight: "30px",
+                        paddingLeft: "30px",
+                      }}
                       variant="contained"
                       onClick={() => {
-                        // submitBooking();
                         setViewModal(true);
+                        setViewModal(false);
                         setCancelModal(false);
                       }}
                     >
@@ -1340,7 +1514,7 @@ export default function Calendar(props) {
                   <Button
                     variant="contained"
                     onClick={() => {
-                      setViewModal(true);
+                      setViewModal(false);
                       setCancelModal(false);
                     }}
                   >
